@@ -2203,6 +2203,241 @@ window.doLogout = function() {
   navigate('home');
 };
 
+// ─── SHIPMENT CREATION & ID GENERATOR ───────────────────────
+window.genID = function() {
+  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let str = '';
+  for (let i = 0; i < 8; i++) str += chars[Math.floor(Math.random() * chars.length)];
+  document.getElementById('aTrackingID').value = `FDX-${str}`;
+};
+
+window.resetCreateForm = function() {
+  ['aTrackingID', 'aRecipName', 'aRecipEmail', 'aOrigin', 'aDest', 'aWeight', 'aDimensions', 'aDelivery'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const st = document.getElementById('aStatus');
+  if (st) st.value = 'In Transit';
+  const suc = document.getElementById('createSuccess');
+  if (suc) suc.style.display = 'none';
+  const err = document.getElementById('createErr');
+  if (err) err.style.display = 'none';
+  window.genID();
+};
+
+window.submitShipment = async function() {
+  const tid = document.getElementById('aTrackingID').value.trim().toUpperCase();
+  const recipName = document.getElementById('aRecipName').value.trim();
+  const recipEmail = document.getElementById('aRecipEmail').value.trim();
+  const origin = document.getElementById('aOrigin').value.trim();
+  const dest = document.getElementById('aDest').value.trim();
+  const weight = document.getElementById('aWeight').value.trim();
+  const dimensions = document.getElementById('aDimensions').value.trim();
+  const pkgType = document.getElementById('aPkgType').value;
+  const status = document.getElementById('aStatus').value;
+  const delivery = document.getElementById('aDelivery').value;
+
+  const suc = document.getElementById('createSuccess');
+  const err = document.getElementById('createErr');
+  const btn = document.getElementById('createBtn');
+  suc.style.display = 'none';
+  err.style.display = 'none';
+
+  if (!tid || !origin || !dest) {
+    err.textContent = 'Tracking ID, Origin, and Destination are required.';
+    err.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving Shipment…';
+
+  try {
+    const payload = {
+      trackingID: tid,
+      recipientName: recipName || 'Valued Consignee',
+      recipientEmail: recipEmail || 'consignee@example.com',
+      recipientPhone: '+1 (555) 019-2831',
+      origin,
+      destination: dest,
+      weight: weight || '2.5',
+      dimensions: dimensions || '30 × 20 × 15 cm',
+      packageType: pkgType,
+      serviceLevel: pkgType === 'Freight' ? 'FedEx 1Day® Freight' : 'FedEx International Priority®',
+      status,
+      currentLocation: origin,
+      currentLat: 40.7128,
+      currentLng: -74.0060,
+      estimatedDelivery: delivery || new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+      checkpoints: [
+        {
+          id: `cp-${Date.now()}`,
+          status: 'Picked Up',
+          location: origin,
+          timestamp: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+          lat: 40.7128,
+          lng: -74.0060,
+          entryType: 'SYSTEM_AUTOMATED'
+        }
+      ]
+    };
+
+    const res = await fetch('/api/shipments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Could not create shipment');
+    }
+
+    suc.innerHTML = `✅ Shipment created! Tracking Number: <strong style="color:var(--accent);cursor:pointer;" onclick="quickTrack('${tid}')">${tid}</strong>`;
+    suc.style.display = 'block';
+
+    await refreshAdminData();
+    renderAdminOverview();
+    renderShipmentsTable(allShipments);
+
+  } catch (e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Shipment';
+  }
+};
+
+// ─── USER MANAGEMENT (Admin Tab) ────────────────────────────
+let demoUsers = [
+  { uid: 'u-1', fullName: 'Sarah Jenkins', email: 'sarah.jenkins@example.com', phone: '+1 555-234-5678', trackingID: 'SHIP-DEMO0001', status: 'active' },
+  { uid: 'u-2', fullName: 'David Sterling', email: 'd.sterling@aviationglobal.co.uk', phone: '+44 20 7946 0912', trackingID: 'FDX-77894201', status: 'active' },
+  { uid: 'u-3', fullName: 'Michael Chen', email: 'mchen.tech@example.com', phone: '+1 415-889-1029', trackingID: 'SHIP-A1B2C3D4', status: 'active' },
+  { uid: 'u-4', fullName: 'Nimi Solomon (Admin)', email: 'nimissolomon@gmail.com', phone: '+1 800-463-3339', trackingID: 'FDX-ADMIN01', status: 'active' }
+];
+
+function renderUsersTable(list) {
+  const container = document.getElementById('usersTable');
+  if (!container) return;
+  container.innerHTML = list.length === 0
+    ? '<p class="empty-text">No users found.</p>'
+    : `<table class="data-table">
+        <thead>
+          <tr><th>Full Name</th><th>Email</th><th>Phone</th><th>Primary Tracking ID</th><th>Status</th></tr>
+        </thead>
+        <tbody>${list.map(u => `
+          <tr>
+            <td><strong>${u.fullName}</strong></td>
+            <td>${u.email}</td>
+            <td>${u.phone}</td>
+            <td><span style="color:var(--accent);cursor:pointer;" onclick="quickTrack('${u.trackingID}')">${u.trackingID}</span></td>
+            <td><span class="badge ${u.status === 'active' ? 'badge-active' : 'badge-suspended'}">${u.status}</span></td>
+          </tr>`).join('')}
+        </tbody></table>`;
+}
+
+window.filterUsers = function() {
+  const q = (document.getElementById('userSearch')?.value || '').toLowerCase();
+  const filtered = demoUsers.filter(u => u.fullName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+  renderUsersTable(filtered);
+};
+
+// ─── AUTHENTICATION (Login / Register / Dash) ───────────────
+window.doLogin = function() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  const err = document.getElementById('loginErr');
+  err.style.display = 'none';
+
+  if (!email || !pass) {
+    err.textContent = 'Please enter both email and password.';
+    err.style.display = 'block';
+    return;
+  }
+
+  if (email.toLowerCase() === 'nimissolomon@gmail.com' || email.toLowerCase() === 'solokumo05@gmail.com' || email.includes('admin')) {
+    alertToast('Welcome Admin: nimissolomon@gmail.com');
+    navigate('admin');
+  } else {
+    alertToast(`Welcome back, ${email.split('@')[0]}!`);
+    document.getElementById('dashWelcome').textContent = `Welcome back, ${email.split('@')[0]}!`;
+    document.getElementById('dashTrackID').textContent = 'SHIP-DEMO0001';
+    navigate('dashboard');
+    loadUserDashboard();
+  }
+};
+
+window.doRegister = function() {
+  const name = document.getElementById('regName').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const pass = document.getElementById('regPass').value;
+  const pass2 = document.getElementById('regPass2').value;
+  const err = document.getElementById('regErr');
+  const suc = document.getElementById('regSuccess');
+  err.style.display = 'none';
+  suc.style.display = 'none';
+
+  if (!name || !email || !pass) {
+    err.textContent = 'Please fill out all required fields.';
+    err.style.display = 'block';
+    return;
+  }
+
+  if (pass !== pass2) {
+    err.textContent = 'Passwords do not match.';
+    err.style.display = 'block';
+    return;
+  }
+
+  const tid = 'FDX-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+  suc.textContent = `Account created successfully! Assigned default tracking account: ${tid}.`;
+  suc.style.display = 'block';
+
+  setTimeout(() => {
+    document.getElementById('dashWelcome').textContent = `Welcome back, ${name}!`;
+    document.getElementById('dashTrackID').textContent = tid;
+    navigate('dashboard');
+    loadUserDashboard();
+  }, 1200);
+};
+
+function loadUserDashboard() {
+  const container = document.getElementById('dashShipments');
+  if (!container) return;
+  container.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Tracking ID</th><th>Origin → Destination</th><th>Status</th><th>Est. Delivery</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>SHIP-DEMO0001</strong></td>
+          <td>Memphis, TN → London Heathrow, UK</td>
+          <td><span class="badge badge-transit">In Transit</span></td>
+          <td>Oct 8, 2026</td>
+          <td><button class="btn-sm" onclick="quickTrack('SHIP-DEMO0001')">Track</button></td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+}
+
+window.showDashTab = function(tab) {
+  document.getElementById('dashTabShipments').style.display = tab === 'shipments' ? 'block' : 'none';
+  document.getElementById('dashTabProfile').style.display = tab === 'profile' ? 'block' : 'none';
+  document.querySelectorAll('#page-dashboard .sidebar li').forEach(li => li.classList.remove('active'));
+  document.getElementById(`dash-tab-${tab}`)?.classList.add('active');
+};
+
+window.saveProfile = function() {
+  const suc = document.getElementById('profSuccess');
+  suc.textContent = 'Profile changes saved successfully.';
+  suc.style.display = 'block';
+  setTimeout(() => suc.style.display = 'none', 3000);
+};
+
+// Initial user list render
+renderUsersTable(demoUsers);
+
 // Auto-boot on load
 window.addEventListener('DOMContentLoaded', () => {
   // Check URL parameters for quick demo
