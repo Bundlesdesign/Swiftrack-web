@@ -1,0 +1,8 @@
+{
+  "name": "SwiftTrack — Global Shipping",
+  "description": "Real-time shipment tracking across 200+ countries with interactive route maps, status progression, customer portal, and admin logistics management.",
+  "requestFramePermissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

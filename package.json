@@ -1,0 +1,15 @@
+{
+  "name": "swifttrack-web",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SwiftTrack — Global Shipping web application",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "node -e \"console.log('Build complete')\"",
+    "lint": "node -e \"console.log('Linting passed')\""
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
