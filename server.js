@@ -575,6 +575,11 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`SwiftTrack enterprise server listening on http://0.0.0.0:${PORT}`);
-});
+// Start listening if not in Vercel serverless environment
+if (!process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`SwiftTrack enterprise server listening on http://0.0.0.0:${PORT}`);
+  });
+}
+
+export default app;
